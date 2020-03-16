@@ -54,7 +54,9 @@ const threeD2 = tf.tensor3d(
 // only relevant within WebGL? Copy to web browser.
 
 // logs memory stats
-tf.memory()
+console.log(
+  tf.memory().numTensors
+)
 
 // removes tensors from memory
 tf.dispose(zeroD1, zeroD2, oneD1, oneD2, twoD1, twoD2, threeD1, threeD2);
