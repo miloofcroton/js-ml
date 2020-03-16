@@ -52,8 +52,31 @@ const threeD2 = tf.tensor3d(
 );
 
 
-// adding tensors
+// OPERATIONS
 const sum1 = zeroD1.add(zeroD2);
 const sum2 = tf.add(zeroD1, zeroD2);
+const sum3 = tf.add(zeroD1, oneD2);
+const sum4 = tf.add(zeroD1, twoD2);
+const sum5 = tf.add(zeroD1, threeD2);
+
+const sub1 = zeroD1.sub(zeroD2);
+const sub2 = tf.sub(zeroD1, zeroD2);
+const sub3 = tf.sub(oneD2, zeroD1);
+const sub4 = tf.sub(twoD2, zeroD1);
+const sub5 = tf.sub(twoD2, oneD1);
+const sub6 = tf.sub(threeD2, zeroD1);
+
+
+// testing equality of operations
 sum1.print();
 sum2.print();
+sum3.print();
+sum4.print();
+sum5.print();
+
+sub1.print();
+sub2.print();
+sub3.print();
+sub4.print();
+sub5.print();
+sub6.print();
