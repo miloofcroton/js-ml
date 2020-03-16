@@ -80,3 +80,19 @@ sub3.print();
 sub4.print();
 sub5.print();
 sub6.print();
+
+
+
+
+// ETC
+
+
+// dot product
+const a = tf.tensor1d([1, 2]);
+const b = tf.tensor2d([[1, 2], [3, 4]]);
+const c = tf.tensor2d([[1, 2, 3], [4, 5, 6]]);
+
+a.dot(b).print();
+tf.dot(a, b).print();
+tf.dot(b, a).print();
+tf.dot(b, c).print();
