@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/miloofcroton/js-ml/issues"
   },
-  "homepage": "https://github.com/miloofcroton/js-ml#readme"
+  "homepage": "https://github.com/miloofcroton/js-ml#readme",
+  "dependencies": {
+    "@tensorflow/tfjs": "^1.7.0"
+  }
 }
