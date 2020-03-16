@@ -2,21 +2,16 @@
   "name": "js-ml",
   "version": "1.0.0",
   "description": "tensorflow.js play session",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/miloofcroton/js-ml.git"
-  },
-  "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/miloofcroton/js-ml/issues"
+  "engines": {
+    "node": ">= 11.10.1"
   },
-  "homepage": "https://github.com/miloofcroton/js-ml#readme",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
   "dependencies": {
-    "@tensorflow/tfjs": "^1.7.0"
+    "@tensorflow/tfjs": "^1.7.0",
+    "@tensorflow/tfjs-node": "^1.7.0"
   }
 }
