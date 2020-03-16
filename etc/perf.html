@@ -4,10 +4,14 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
     <script type="text/javascript">
       const createLotsOfTensors = () => {
-        for (let i = 0; i < 10000; i++) {
+        let startInd = 0;
+        while (startInd < 10000) {
           const a = tf.tensor1d([1, 2, 3]);
           const b = tf.scalar(i);
+
           a.mul(b).print();
+
+          startInd++;
         }
       }
 
