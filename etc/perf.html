@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.0.0/dist/tf.min.js"></script>
+    <script type="text/javascript">
+      const createLotsOfTensors = () => {
+        for (let i = 0; i < 10000; i++) {
+          const a = tf.tensor1d([1, 2, 3]);
+          const b = tf.scalar(i);
+          a.mul(b).print();
+        }
+      }
+
+      createLotsOfTensors();
+    </script>
+  </head>
+  <body>
+    <h1>Number of tensors in memory</h1>
+    <script type="text/javascript">
+      document.write(tf.memory().numTensors);
+    </script>
+  </body>
+</html>
