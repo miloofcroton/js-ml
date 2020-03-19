@@ -14,10 +14,7 @@
       tfvis.render.scatterplot(
         { name: `${featureName} vs House Price`},
         { values: [pointsArray], series: ['original'] },
-        {
-          xLabel: featureName,
-          yLabel: "Price"
-        }
+        { xLabel: featureName, yLabel: "Price" }
       );
     };
 
@@ -74,6 +71,20 @@
       return model;
     };
 
+    const trainModel = async (model, trainingFeatureTensor, trainingLabelTensor) => {
+
+
+
+      return model.fit(trainingFeatureTensor, trainingLabelTensor, {
+        batchSize: 32,
+        epochs: 20,
+        validationSplit: 0.2,
+        callbacks: {
+          onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
+
+        }
+      });
+    }
 
 
     const run = async () => {
@@ -129,6 +140,9 @@
       model.summary();
       tfvis.show.modelSummary({ name: 'Test model' }, model)
       tfvis.show.layer({ name: 'Test layer 1' }, layer)
+
+      const result = await trainModel(model, trainingFeatureTensor, trainingLabelTensor);
+      console.log(result)
     }
 
     run();
