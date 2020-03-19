@@ -61,6 +61,8 @@
 
       // minimizes the loss function with stochastic gradient descent and a 0.1 learning rate
       const optFunction = tf.train.sgd(0.1);
+      // adam works really well here too
+      // const optFunction = tf.train.adam();
 
       // prepares model for training and evaluation
       model.compile({
@@ -71,17 +73,22 @@
       return model;
     };
 
+    // trains the model
     const trainModel = async (model, trainingFeatureTensor, trainingLabelTensor) => {
-
-
+      // using tfvis to monitor training
+      const { onEpochEnd, onBatchEnd } = tfvis.show.fitCallbacks(
+        { name: "Training Performance" },
+        ['loss']
+      )
 
       return model.fit(trainingFeatureTensor, trainingLabelTensor, {
         batchSize: 32,
         epochs: 20,
         validationSplit: 0.2,
         callbacks: {
-          onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
-
+          // onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
+          onEpochEnd,
+          onBatchEnd,
         }
       });
     }
@@ -141,8 +148,18 @@
       tfvis.show.modelSummary({ name: 'Test model' }, model)
       tfvis.show.layer({ name: 'Test layer 1' }, layer)
 
+      // training model
       const result = await trainModel(model, trainingFeatureTensor, trainingLabelTensor);
+      const trainingLoss = result.history.loss.pop();
+      const validationLoss = result.history.val_loss.pop();
       console.log(result)
+      console.log(`Training set loss: ${trainingLoss}`);
+      console.log(`Validation set loss: ${validationLoss}`);
+
+      // evaluating the model
+      const lossTensor = model.evaluate(testingFeatureTensor, testingLabelTensor);
+      const loss = await lossTensor.dataSync();
+      console.log(`Testing set loss: ${loss}`);
     }
 
     run();
