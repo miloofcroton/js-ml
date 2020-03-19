@@ -20,6 +20,17 @@
       )
     }
 
+    const normalize = (tensor) => {
+      const min = tensor.min()
+      const max = tensor.max()
+      const normalizedTensor = tensor
+        .sub(min)
+        .div(max
+          .sub(min)
+        )
+      return normalizedTensor
+    }
+
     const run = async () => {
       const salesData = tf.data.csv("http://127.0.0.1:8080/housing/kc_house_data.csv");
       const sampleData = salesData.take(10);
@@ -43,6 +54,11 @@
       featureTensor.print()
       labelTensor.print()
 
+      const normalizedFeatureTensor = normalize(featureTensor)
+      const normalizedLabelTensor = normalize(labelTensor)
+
+      normalizedFeatureTensor.print()
+      normalizedLabelTensor.print()
     }
 
     run();
