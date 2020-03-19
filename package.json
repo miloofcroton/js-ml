@@ -12,9 +12,14 @@
     "serve:dir": "http-server --cors=*"
   },
   "dependencies": {
+    "@material-ui/core": "^4.9.7",
+    "@material-ui/icons": "^4.9.1",
+    "@material-ui/lab": "^4.0.0-alpha.46",
+    "@material-ui/styles": "^4.9.6",
     "@tensorflow/tfjs": "^1.7.0",
     "@tensorflow/tfjs-node": "^1.7.0",
     "@tensorflow/tfjs-vis": "^1.4.0",
-    "http-server": "^0.12.1"
+    "http-server": "^0.12.1",
+    "next": "^9.3.1"
   }
 }
