@@ -9,11 +9,28 @@
 
   <script type="text/javascript">
 
+    const plot = (pointsArray, featureName) => {
+      tfvis.render.scatterplot(
+        { name: `${featureName} vs House Price`},
+        { values: [pointsArray], series: ['original'] },
+        {
+          xLabel: featureName,
+          yLabel: "Price"
+        }
+      )
+    }
+
     const run = async () => {
       const salesData = tf.data.csv("http://127.0.0.1:8080/housing/kc_house_data.csv");
       const sampleData = salesData.take(10);
       const arrayData = await sampleData.toArray();
       console.log(arrayData);
+
+      const points = salesData.map(record => ({
+        x: record.sqft_living,
+        y: record.price
+      }))
+      plot(await points.toArray(), "square feet")
     }
 
     run();
