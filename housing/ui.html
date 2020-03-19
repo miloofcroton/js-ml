@@ -59,7 +59,7 @@
       await plot(points, "Square feet", predictedPoints);
     }
 
-    // plot the params
+    // plot the params - for sigmoid model only, ran from console only
     const plotParams = async (weight, bias) => {
       model.getLayer(null, 0).setWeights([
         tf.tensor2d([[weight]]), // Kernel (input multiplier)
@@ -95,17 +95,32 @@
       return denormalizedTensor;
     };
 
-    // creates a linear regression model
+    // creates a regression model
     const create = () => {
       // creates sequential model
       const model = tf.sequential();
 
       // adds first layer to model
       model.add(tf.layers.dense({
+        units: 10,
+        useBias: true,
+        // activation: 'linear',
+        activation: 'sigmoid',
+        inputDim: 1,
+      }));
+      // second layer
+      model.add(tf.layers.dense({
+        units: 10,
+        useBias: true,
+        // activation: 'linear',
+        activation: 'sigmoid',
+      }));
+      // output layer
+      model.add(tf.layers.dense({
         units: 1,
         useBias: true,
-        activation: 'linear',
-        inputDim: 1,
+        // activation: 'linear',
+        activation: 'sigmoid',
       }));
 
       // determines the loss, more useful for normalized data
@@ -135,17 +150,18 @@
 
       return model.fit(trainingFeatureTensor, trainingLabelTensor, {
         batchSize: 32,
-        epochs: 2,
-        // epochs: 20,
+        // epochs: 2,
+        epochs: 100,
         validationSplit: 0.2,
         callbacks: {
           // onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
           onEpochEnd,
           onBatchEnd,
-          onEpochBegin: async () => {
+          onEpochBegin: async (epoch, log) => {
             await plotPredictionLine();
             const layer = model.getLayer(undefined, 0);
-            tfvis.show.layer({ name: "Layer 1" }, layer);
+            tfvis.show.layer({ name: 'Layer 1' }, layer);
+            // tfvis.show.layer({ name: `Layer ${epoch}` }, layer);
           },
         }
       });
@@ -162,7 +178,7 @@
       model = create();
       const layer = model.getLayer(undefined, 0);
       model.summary();
-      tfvis.show.modelSummary({ name: 'Test model' }, model)
+      tfvis.show.modelSummary({ name: 'Model summary' }, model)
       tfvis.show.layer({ name: 'Layer 1' }, layer)
 
       // training model
