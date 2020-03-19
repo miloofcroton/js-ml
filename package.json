@@ -8,10 +8,12 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "start": "node index.js",
+    "serve:dir": "http-server"
   },
   "dependencies": {
     "@tensorflow/tfjs": "^1.7.0",
-    "@tensorflow/tfjs-node": "^1.7.0"
+    "@tensorflow/tfjs-node": "^1.7.0",
+    "http-server": "^0.12.1"
   }
 }

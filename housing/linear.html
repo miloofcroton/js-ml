@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TensorFlow.js linear regression</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+</head>
+<body>
+
+  <script type="text/javascript">
+
+    const run = async () => {
+      const salesData = tf.data.csv("http://127.0.0.1:8080/housing/kc_house_data.csv");
+      const sampleData = salesData.take(10);
+      const arrayData = await sampleData.toArray();
+      console.log(arrayData);
+    }
+
+    run();
+
+  </script>
+
+</body>
+</html>
