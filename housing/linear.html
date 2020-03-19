@@ -48,8 +48,10 @@
 
     // creates a linear regression model
     const createModel = () => {
+      // creates sequential model
       const model = tf.sequential();
 
+      // adds first layer to model
       model.add(tf.layers.dense({
         units: 1,
         useBias: true,
@@ -57,6 +59,17 @@
         inputDim: 1,
       }));
 
+      // determines the loss, more useful for normalized data
+      const lossFunction = 'meanSquaredError'
+
+      // minimizes the loss function with stochastic gradient descent and a 0.1 learning rate
+      const optFunction = tf.train.sgd(0.1);
+
+      // prepares model for training and evaluation
+      model.compile({
+        loss: lossFunction,
+        optimizer: optFunction,
+      })
 
       return model;
     };
