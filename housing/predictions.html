@@ -11,6 +11,12 @@
 
   <script type="text/javascript">
 
+    // let model;
+    // let points;
+    // let normalisedFeature, normalisedLabel;
+    // let trainingFeatureTensor, testingFeatureTensor, trainingLabelTensor, testingLabelTensor;
+    const storageID = "kc-house-price-regression";
+
     // side effect: uses tf-vis library to show scatter plot
     const plot = (pointsArray, featureName) => {
       tfvis.render.scatterplot(
@@ -19,6 +25,10 @@
         { xLabel: featureName, yLabel: "Price" }
       );
     };
+
+    const plotPredictionLine = async () => {
+      alert("Not yet implemented")
+    }
 
     // normalizes data
     const normalize = (tensor) => {
@@ -93,7 +103,28 @@
           onBatchEnd,
         }
       });
-    }
+    };
+
+
+    const predict = async () => {
+      alert("Not yet implemented")
+    };
+    const save = async () => {
+      alert("Not yet implemented")
+    };
+    const load = async () => {
+      alert("Not yet implemented")
+    };
+    const test = async () => {
+      alert("Not yet implemented")
+    };
+    const train = async () => {
+      alert("Not yet implemented")
+    };
+    const toggleVisor = async () => {
+      alert("Not yet implemented")
+    };
+
 
 
     const run = async () => {
@@ -164,7 +195,7 @@
       console.log(`Testing set loss: ${loss}`);
     }
 
-    run();
+    // run();
 
   </script>
 
