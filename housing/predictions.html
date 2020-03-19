@@ -11,13 +11,20 @@
 
   <script type="text/javascript">
 
-    // let model;
-    // let points;
-    // let normalisedFeature, normalisedLabel;
-    // let trainingFeatureTensor, testingFeatureTensor, trainingLabelTensor, testingLabelTensor;
+    let points;
+    let model;
+    let normalizedFeature, normalizedLabel;
+    let trainingFeatureTensor, testingFeatureTensor, trainingLabelTensor, testingLabelTensor;
     const storageID = "kc-house-price-regression";
+    const storageDir = `localstorage://${storageID}`;
+    const csvDir = 'http://127.0.0.1:8080/housing/kc_house_data.csv';
 
-    // side effect: uses tf-vis library to show scatter plot
+    // hide/show tf-vis panel
+    const toggleVisor = async () => {
+      tfvis.visor().toggle();
+    };
+
+    // plot the raw data
     const plot = (pointsArray, featureName) => {
       tfvis.render.scatterplot(
         { name: `${featureName} vs House Price`},
@@ -26,8 +33,34 @@
       );
     };
 
+    // plot the prediction line
     const plotPredictionLine = async () => {
-      alert("Not yet implemented")
+      const [xs, ys] = tf.tidy(() => {
+        const normalizedXs = tf.linspace(0, 1, 100);
+        const normalizedYs = model.predict(normalizedXs.reshape([100, 1]));
+
+        const xs = denormalize(normalizedXs, normalizedFeature.min, normalizedFeature.max);
+        const ys = denormalize(normalizedYs, normalizedLabel.min, normalizedLabel.max);
+
+        return [ xs.dataSync(), ys.dataSync() ];
+      });
+
+      const predictedPoints = Array.from(xs).map((val, index) => {
+        return { x: val, y: ys[index] };
+      });
+
+      await plot(points, "Square feet", predictedPoints);
+    }
+
+    // plot the params
+    const plotParams = async (weight, bias) => {
+      model.getLayer(null, 0).setWeights([
+        tf.tensor2d([[weight]]), // Kernel (input multiplier)
+        tf.tensor1d([bias]), // Bias
+      ])
+      await plotPredictionLine();
+      const layer = model.getLayer(undefined, 0);
+      tfvis.show.layer({ name: "Layer 1" }, layer);
     }
 
     // normalizes data
@@ -48,15 +81,15 @@
 
     // denormalizes data
     const denormalize = (tensor, min, max) => {
-      const denormalisedTensor = tensor
+      const denormalizedTensor = tensor
         .mul(max
           .sub(min)
         ).add(min);
-      return denormalisedTensor;
+      return denormalizedTensor;
     };
 
     // creates a linear regression model
-    const createModel = () => {
+    const create = () => {
       // creates sequential model
       const model = tf.sequential();
 
@@ -86,7 +119,7 @@
     };
 
     // trains the model
-    const trainModel = async (model, trainingFeatureTensor, trainingLabelTensor) => {
+    const train = async (model, trainingFeatureTensor, trainingLabelTensor) => {
       // using tfvis to monitor training
       const { onEpochEnd, onBatchEnd } = tfvis.show.fitCallbacks(
         { name: "Training Performance" },
@@ -95,7 +128,8 @@
 
       return model.fit(trainingFeatureTensor, trainingLabelTensor, {
         batchSize: 32,
-        epochs: 20,
+        epochs: 2,
+        // epochs: 20,
         validationSplit: 0.2,
         callbacks: {
           // onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
@@ -105,38 +139,88 @@
       });
     };
 
+    const createAndTrain = async () => {
+      // ui updates: disable all buttons and update status
+      ["train", "test", "load", "predict", "save"].map(id => {
+        document.getElementById(`${id}-button`).setAttribute("disabled", "disabled");
+      });
+      document.getElementById("model-status").innerHTML = "Training...";
 
+      // creating model
+      model = create();
+      const layer = model.getLayer(undefined, 0);
+      model.summary();
+      tfvis.show.modelSummary({ name: 'Test model' }, model)
+      tfvis.show.layer({ name: 'Test layer 1' }, layer)
+
+      // training model
+      const result = await train(model, trainingFeatureTensor, trainingLabelTensor);
+      const trainingLoss = result.history.loss.pop();
+      const validationLoss = result.history.val_loss.pop();
+      console.log(result)
+      console.log(`Training set loss: ${trainingLoss}`);
+      console.log(`Validation set loss: ${validationLoss}`);
+
+      // updating ui again
+      document.getElementById("model-status").innerHTML = "Trained (unsaved)\n"
+        + `Loss: ${trainingLoss.toPrecision(5)}\n`
+        + `Validation loss: ${validationLoss.toPrecision(5)}`;
+      document.getElementById("test-button").removeAttribute("disabled");
+      document.getElementById("save-button").removeAttribute("disabled");
+      document.getElementById("predict-button").removeAttribute("disabled");
+    };
+
+    // save the model
+    const save = async () => {
+      const saveResults = await model.save(storageDir);
+      document.getElementById("model-status").innerHTML = `Trained (saved ${saveResults.modelArtifactsInfo.dateSaved})`;
+    };
+
+    // load the model
+    const load = async () => {
+      const models = await tf.io.listModels();
+      const modelInfo = models[storageDir];
+      if (modelInfo) {
+        model = await tf.loadLayersModel(storageKey);
+
+        tfvis.show.modelSummary({ name: "Model summary" }, model);
+        const layer = model.getLayer(undefined, 0);
+        tfvis.show.layer({ name: "Layer 1" }, layer);
+
+        await plotPredictionLine();
+
+        document.getElementById("model-status").innerHTML = `Trained (saved ${modelInfo.dateSaved})`;
+        document.getElementById("predict-button").removeAttribute("disabled");
+      }
+      else {
+        alert("Could not load: no saved model found");
+      }
+    };
+
+    // evaluate the model
+    const test = async () => {
+      const lossTensor = model.evaluate(testingFeatureTensor, testingLabelTensor);
+      const loss = (await lossTensor.dataSync())[0];
+      console.log(`Testing set loss: ${loss}`);
+
+      document.getElementById("testing-status").innerHTML = `Testing set loss: ${loss.toPrecision(5)}`;
+    };
+
+    // predict from the model
     const predict = async () => {
       alert("Not yet implemented")
     };
-    const save = async () => {
-      alert("Not yet implemented")
-    };
-    const load = async () => {
-      alert("Not yet implemented")
-    };
-    const test = async () => {
-      alert("Not yet implemented")
-    };
-    const train = async () => {
-      alert("Not yet implemented")
-    };
-    const toggleVisor = async () => {
-      alert("Not yet implemented")
-    };
 
-
-
-    const run = async () => {
+    const main = async () => {
       // import from csv (source: https://www.kaggle.com/harlfoxem/housesalesprediction)
-      const salesData = tf.data.csv("http://127.0.0.1:8080/housing/kc_house_data.csv");
+      const salesData = tf.data.csv(csvDir);
 
       // extract points (x and y values) to plot
       const pointsData = salesData.map(record => ({
         x: record.sqft_living,
         y: record.price
       }))
-      const points = await pointsData.toArray();
+      points = await pointsData.toArray();
 
       // ensuring there are an even number of points, for the sake of splitting
       if (points.length % 2 !== 0) {
@@ -160,8 +244,12 @@
       const labelTensor = tf.tensor2d(labelValues, [labelValues.length, 1])
 
       // normalize features and labels
-      const normalizedFeature = normalize(featureTensor)
-      const normalizedLabel = normalize(labelTensor)
+      normalizedFeature = normalize(featureTensor)
+      normalizedLabel = normalize(labelTensor)
+
+      // memory management
+      featureTensor.dispose();
+      labelTensor.dispose();
 
       // test denormalization
       denormalize(
@@ -171,31 +259,16 @@
       ).print();
 
       // splitting data into training and testing data
-      const [trainingFeatureTensor, testingFeatureTensor] = tf.split(normalizedFeature.tensor, 2);
-      const [trainingLabelTensor, testingLabelTensor] = tf.split(normalizedLabel.tensor, 2);
+      [trainingFeatureTensor, testingFeatureTensor] = tf.split(normalizedFeature.tensor, 2);
+      [trainingLabelTensor, testingLabelTensor] = tf.split(normalizedLabel.tensor, 2);
 
-      // creating model
-      const model = createModel();
-      const layer = model.getLayer(undefined, 0);
-      model.summary();
-      tfvis.show.modelSummary({ name: 'Test model' }, model)
-      tfvis.show.layer({ name: 'Test layer 1' }, layer)
-
-      // training model
-      const result = await trainModel(model, trainingFeatureTensor, trainingLabelTensor);
-      const trainingLoss = result.history.loss.pop();
-      const validationLoss = result.history.val_loss.pop();
-      console.log(result)
-      console.log(`Training set loss: ${trainingLoss}`);
-      console.log(`Validation set loss: ${validationLoss}`);
-
-      // evaluating the model
-      const lossTensor = model.evaluate(testingFeatureTensor, testingLabelTensor);
-      const loss = await lossTensor.dataSync();
-      console.log(`Testing set loss: ${loss}`);
+      // update status and enable train button
+      document.getElementById("model-status").innerHTML = "No model trained";
+      document.getElementById("train-button").removeAttribute("disabled");
+      document.getElementById("load-button").removeAttribute("disabled");
     }
 
-    // run();
+    main();
 
   </script>
 
@@ -270,7 +343,7 @@
                 id="train-button"
                 class="waves-effect light-blue waves-light btn"
                 disabled
-                onclick="train()"
+                onclick="createAndTrain()"
               >
                 Train New Model
               </button>
