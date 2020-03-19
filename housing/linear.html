@@ -28,7 +28,16 @@
         .div(max
           .sub(min)
         )
-      return normalizedTensor
+      return {
+        tensor: normalizedTensor,
+        min,
+        max,
+      }
+    }
+
+    const denormalize = (tensor, min, max) => {
+      const denormalisedTensor = tensor.mul(max.sub(min)).add(min);
+      return denormalisedTensor;
     }
 
     const run = async () => {
@@ -54,11 +63,17 @@
       featureTensor.print()
       labelTensor.print()
 
-      const normalizedFeatureTensor = normalize(featureTensor)
-      const normalizedLabelTensor = normalize(labelTensor)
+      const normalizedFeature = normalize(featureTensor)
+      const normalizedLabel = normalize(labelTensor)
 
-      normalizedFeatureTensor.print()
-      normalizedLabelTensor.print()
+      normalizedFeature.tensor.print()
+      normalizedLabel.tensor.print()
+
+      denormalize(
+        normalizedFeature.tensor,
+        normalizedFeature.min,
+        normalizedFeature.max,
+      ).print();
     }
 
     run();
