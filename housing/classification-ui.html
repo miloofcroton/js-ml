@@ -25,8 +25,10 @@
     };
 
     // plot the raw data
-    const plot = (pointsArray, classKey, size = 400, equalizeClassSizes = false) => {
+    const plot = (pointsArray, classKey, size = 400, equalizeClassSizes = true) => {
+      // series of each class
       const allSeries = {};
+
       // Add each class as a series
       pointsArray.forEach(p => {
         // Add each point to the series for the class it is in
@@ -39,6 +41,7 @@
         series.push(p);
       });
 
+      // setting each class to have an equal number of elements
       if (equalizeClassSizes) {
         // Find smallest class
         let maxLength = null;
@@ -54,7 +57,27 @@
             delete allSeries[keyName];
           }
         });
-    };
+      }
+
+      // render the scatterplot
+      tfvis.render.scatterplot(
+        {
+          name: `Square Feet vs House Price`,
+          styles: { width: "100%" },
+        },
+        {
+          // should use object.entries(allseries).reduce and split them correctly (in order)
+          values: Object.values(allSeries),
+          series: Object.keys(allSeries),
+        },
+        {
+          xLabel: "Square feet",
+          yLabel: "Price",
+          height: size,
+          width: size * 1.5,
+        }
+      );
+    }
 
     // plot the prediction line
     const plotPredictionLine = async () => {
@@ -88,27 +111,75 @@
 
     // normalizes data
     const normalize = (tensor, previousMin = null, previousMax = null) => {
-      const min = previousMin || tensor.min()
-      const max = previousMax || tensor.max()
-      const normalizedTensor = tensor
-        .sub(min)
-        .div(max
+
+      const featureDimensions = tensor.shape.length > 1 && tensor.shape[1];
+
+      if (featureDimensions && featureDimensions > 1) {
+        // More than one feature
+
+        // Split into separate tensors
+        const features = tf.split(tensor, featureDimensions, 1);
+
+        // Normalize and find min/max values for each feature
+        const normalizedFeatures = features.map((featureTensor, i) =>
+          normalize(featureTensor,
+            previousMin ? previousMin[i] : null,
+            previousMax ? previousMax[i] : null,
+          )
+        );
+
+        // Prepare return values
+        const normalizedTensor = tf.concat(normalizedFeatures.map(f => f.tensor), 1);
+        const min = normalizedFeatures.map(f => f.min);
+        const max = normalizedFeatures.map(f => f.max);
+
+        return {
+          tensor: normalizedTensor,
+          min,
+          max
+        };
+      }
+      else {
+        // if just one feature
+        const min = previousMin || tensor.min()
+        const max = previousMax || tensor.max()
+        const normalizedTensor = tensor
           .sub(min)
-        )
-      return {
-        tensor: normalizedTensor,
-        min,
-        max,
+          .div(max
+            .sub(min)
+          )
+        return {
+          tensor: normalizedTensor,
+          min,
+          max,
+        }
       }
     };
 
     // denormalizes data
     const denormalize = (tensor, min, max) => {
-      const denormalizedTensor = tensor
-        .mul(max
-          .sub(min)
-        ).add(min);
-      return denormalizedTensor;
+      const featureDimensions = tensor.shape.length > 1 && tensor.shape[1];
+
+      if (featureDimensions && featureDimensions > 1) {
+        // More than one feature
+
+        // Split into separate tensors
+        const features = tf.split(tensor, featureDimensions, 1);
+
+        const denormalized = features.map((featureTensor, i) => denormalize(featureTensor, min[i], max[i]));
+
+        const denormalizedTensor = tf.concat(denormalized, 1);
+        return denormalizedTensor;
+      }
+
+      else {
+        // if just one feature
+        const denormalizedTensor = tensor
+          .mul(max
+            .sub(min)
+          ).add(min);
+        return denormalizedTensor;
+      }
     };
 
     // creates a regression model
@@ -298,12 +369,12 @@
 
       // extract inputs (features)
       // const featureValues = await pointsData.map(p => p.x).toArray()
-      const featureValues = points.map(p => p.x)
-      const featureTensor = tf.tensor2d(featureValues, [featureValues.length, 1])
+      const featureValues = points.map(p => [p.x, p.y])
+      const featureTensor = tf.tensor2d(featureValues)
 
       // extract outputs (labels)
       // const labelValues = await pointsData.map(p => p.y).toArray()
-      const labelValues = points.map(p => p.y)
+      const labelValues = points.map(p => p.class)
       const labelTensor = tf.tensor2d(labelValues, [labelValues.length, 1])
 
       // normalize features and labels
