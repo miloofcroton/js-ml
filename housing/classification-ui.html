@@ -368,23 +368,28 @@
 
     // predict from the model
     const predict = async () => {
-      const predictionInput = parseInt(document.getElementById("prediction-input").value);
-      if (isNaN(predictionInput)) {
+      const predictionInputOne = parseInt(document.getElementById("prediction-input-1").value);
+      const predictionInputTwo = parseInt(document.getElementById("prediction-input-2").value);
+
+      if (isNaN(predictionInputOne) || isNaN(predictionInputTwo)) {
         alert("Please enter a valid number");
       }
-      else if (predictionInput < 200) {
+      else if (predictionInputOne < 200) {
         alert("Please enter a value above 200 sqft");
+      }
+      else if (predictionInputTwo < 75000) {
+        alert("Please enter a value above $75,000");
       }
       else {
         tf.tidy(() => {
-          const inputTensor = tf.tensor1d([predictionInput]);
+          const inputTensor = tf.tensor2d([[predictionInputOne, predictionInputTwo]]);
           const normalizedInput = normalize(inputTensor, normalizedFeature.min, normalizedFeature.max);
           const normalizedOutputTensor = model.predict(normalizedInput.tensor);
           const outputTensor = denormalize(normalizedOutputTensor, normalizedLabel.min, normalizedLabel.max);
           const outputValue = outputTensor.dataSync()[0];
-          const outputValueRounded = (outputValue/1000).toFixed(0)*1000;
-          document.getElementById("prediction-output").innerHTML = `The predicted house price is <br>`
-            + `<span style="font-size: 2em">\$${outputValueRounded}</span>`;
+          const outputValuePercent = (outputValue * 100).toFixed(1);
+          document.getElementById("prediction-output").innerHTML = `The likelihood of being a waterfront property is <br>`
+            + `<span style="font-size: 2em">${outputValuePercent}%</span>`;
         });
       }
     };
@@ -574,8 +579,16 @@
               Square feet of living space:
               <input
                 type="number"
-                id="prediction-input"
+                id="prediction-input-1"
                 placeholder="2000"
+              />
+            </label>
+            <label>
+              House price
+              <input
+                type="number"
+                id="prediction-input-2"
+                placeholder="100000"
               />
             </label>
             <button
@@ -584,7 +597,7 @@
               class="waves-effect light-green waves-light btn"
               disabled onclick="predict()"
             >
-              Predict house price
+              Predict class
             </button>
             <p>
               <strong id="prediction-output"></strong>
