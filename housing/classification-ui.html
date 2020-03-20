@@ -15,7 +15,7 @@
     let model;
     let normalizedFeature, normalizedLabel;
     let trainingFeatureTensor, testingFeatureTensor, trainingLabelTensor, testingLabelTensor;
-    const storageID = "kc-house-price-regression";
+    const storageID = "kc-house-price-binary";
     const storageDir = `localstorage://${storageID}`;
     const csvDir = 'http://127.0.0.1:8080/housing/kc_house_data.csv';
 
@@ -79,23 +79,67 @@
       );
     }
 
-    // plot the prediction line
-    const plotPredictionLine = async () => {
-      const [xs, ys] = tf.tidy(() => {
-        const normalizedXs = tf.linspace(0, 1, 100);
-        const normalizedYs = model.predict(normalizedXs.reshape([100, 1]));
+    // plot the prediction heatmap
+    const plotPredictionHeatmap = async (name = "Predicted class", size = 400) => {
+      const [ valuesPromise, xTicksPromise, yTicksPromise ] = tf.tidy(() => {
+        const gridSize = 50;
+        const predictionColumns = [];
+        for (let colIndex = 0; colIndex < gridSize; colIndex++) {
+          // Loop for each column, starting from the left
+          const colInputs = [];
+          const x = colIndex / gridSize;
+          for (let rowIndex = 0; rowIndex < gridSize; rowIndex++) {
+            // Loop for each row, starting from the top
+            const y = (gridSize - rowIndex)/ gridSize;
+            colInputs.push([x, y]);
+          }
 
-        const xs = denormalize(normalizedXs, normalizedFeature.min, normalizedFeature.max);
-        const ys = denormalize(normalizedYs, normalizedLabel.min, normalizedLabel.max);
+          const colPredictions = model.predict(tf.tensor2d(colInputs));
+          predictionColumns.push(colPredictions);
+        }
+        const valuesTensor = tf.stack(predictionColumns);
 
-        return [ xs.dataSync(), ys.dataSync() ];
+        const normalizedTicksTensor = tf.linspace(0, 1, gridSize);
+        const xTicksTensor = denormalize(normalizedTicksTensor,
+          normalizedFeature.min[0], normalizedFeature.max[0]);
+        const yTicksTensor = denormalize(normalizedTicksTensor.reverse(),
+          normalizedFeature.min[1], normalizedFeature.max[1]);
+
+        return [ valuesTensor.array(), xTicksTensor.array(), yTicksTensor.array() ];
       });
 
-      const predictedPoints = Array.from(xs).map((val, index) => {
-        return { x: val, y: ys[index] };
-      });
+      const values = await valuesPromise;
+      const xTicks = await xTicksPromise;
+      const yTicks = await yTicksPromise;
+      const xTickLabels = xTicks.map(v => (v/1000).toFixed(1)+"k sqft");
+      const yTickLabels = yTicks.map(v => "$" + (v/1000).toFixed(0) + "k");
+      const data = {
+        values,
+        xTickLabels,
+        yTickLabels,
+      };
 
-      await plot(points, "Square feet", predictedPoints);
+      // check against local data
+      tfvis.render.heatmap(
+        {
+          name: `${name} (local)`,
+          tab: "Predictions"
+        },
+        data,
+        { height: size }
+      );
+      // check against full domain
+      tfvis.render.heatmap(
+        {
+          name: `${name} (full domain)`,
+          tab: "Predictions"
+        },
+        data,
+        {
+          height: size,
+          domain: [0, 1]
+        }
+      );
     }
 
     // plot the params - for sigmoid model only, ran from console only
@@ -104,7 +148,7 @@
         tf.tensor2d([[weight]]), // Kernel (input multiplier)
         tf.tensor1d([bias]), // Bias
       ])
-      await plotPredictionLine();
+      await plotPredictionHeatmap();
       const layer = model.getLayer(undefined, 0);
       tfvis.show.layer({ name: "Layer 1" }, layer);
     }
@@ -182,7 +226,7 @@
       }
     };
 
-    // creates a regression model
+    // creates a classification model
     const create = () => {
       // creates sequential model
       const model = tf.sequential();
@@ -193,7 +237,7 @@
         useBias: true,
         // activation: 'linear',
         activation: 'sigmoid',
-        inputDim: 1,
+        inputDim: 2,
       }));
       // second layer
       model.add(tf.layers.dense({
@@ -211,12 +255,10 @@
       }));
 
       // determines the loss, more useful for normalized data
-      const lossFunction = 'meanSquaredError'
+      const lossFunction = 'binaryCrossentropy'
 
-      // minimizes the loss function with stochastic gradient descent and a 0.1 learning rate
-      const optFunction = tf.train.sgd(0.1);
-      // adam works really well here too
-      // const optFunction = tf.train.adam();
+      // minimizes the loss function with adam
+      const optFunction = tf.train.adam();
 
       // prepares model for training and evaluation
       model.compile({
@@ -237,15 +279,15 @@
 
       return model.fit(trainingFeatureTensor, trainingLabelTensor, {
         batchSize: 32,
-        // epochs: 2,
-        epochs: 100,
+        epochs: 2,
+        // epochs: 100,
         validationSplit: 0.2,
         callbacks: {
           // onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
           onEpochEnd,
           onBatchEnd,
           onEpochBegin: async (epoch, log) => {
-            await plotPredictionLine();
+            await plotPredictionHeatmap();
             const layer = model.getLayer(undefined, 0);
             tfvis.show.layer({ name: 'Layer 1' }, layer);
             // tfvis.show.layer({ name: `Layer ${epoch}` }, layer);
@@ -257,6 +299,7 @@
     const createAndTrain = async () => {
       // ui updates: disable all buttons and update status
       ["train", "test", "load", "predict", "save"].map(id => {
+
         document.getElementById(`${id}-button`).setAttribute("disabled", "disabled");
       });
       document.getElementById("model-status").innerHTML = "Training...";
@@ -272,6 +315,8 @@
       const result = await train(model, trainingFeatureTensor, trainingLabelTensor);
       const trainingLoss = result.history.loss.pop();
       const validationLoss = result.history.val_loss.pop();
+
+      await plotPredictionHeatmap();
       console.log(result)
       console.log(`Training set loss: ${trainingLoss}`);
       console.log(`Validation set loss: ${validationLoss}`);
@@ -302,7 +347,7 @@
         const layer = model.getLayer(undefined, 0);
         tfvis.show.layer({ name: "Layer 1" }, layer);
 
-        await plotPredictionLine();
+        await plotPredictionHeatmap();
 
         document.getElementById("model-status").innerHTML = `Trained (saved ${modelInfo.dateSaved})`;
         document.getElementById("predict-button").removeAttribute("disabled");
