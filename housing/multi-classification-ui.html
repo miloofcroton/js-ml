@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TensorFlow.js multi classification</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+
+  <script type="text/javascript">
+
+    let points;
+    let model;
+    let normalizedFeature, normalizedLabel;
+    let trainingFeatureTensor, testingFeatureTensor, trainingLabelTensor, testingLabelTensor;
+    const storageID = "kc-house-price-binary";
+    const storageDir = `localstorage://${storageID}`;
+    const csvDir = 'http://127.0.0.1:8080/housing/kc_house_data.csv';
+
+    // hide/show tf-vis panel
+    const toggleVisor = async () => {
+      tfvis.visor().toggle();
+    };
+
+    // one hot encoding: class name => index
+    const getClassIndex = (className) => {
+      if (className === 1 || className === "1") {
+        return 0; // 1 bedroom
+      }
+      else if (className === 2 || className === "2") {
+        return 1; // 2 bedrooms
+      }
+      else {
+        return 2; // 3+ bedrooms
+      }
+    }
+
+    // one hot encoding: class index => name
+    const getClassName = (classIndex) => {
+      if (classIndex === 2) {
+        return "3+";
+      }
+      else {
+        return classIndex + 1;
+      }
+    }
+
+    // plot the raw data
+    const plot = (pointsArray, classKey, size = 400, equalizeClassSizes = true) => {
+      // series of each class
+      const allSeries = {};
+
+      // Add each class as a series
+      pointsArray.forEach(p => {
+        // Add each point to the series for the class it is in
+        const seriesName = `${classKey}: ${p.class}`;
+        let series = allSeries[seriesName];
+        if (!series) {
+          series = [];
+          allSeries[seriesName] = series;
+        }
+        series.push(p);
+      });
+
+      // setting each class to have an equal number of elements
+      if (equalizeClassSizes) {
+        // Find smallest class
+        let maxLength = null;
+        Object.values(allSeries).forEach(series => {
+          if (maxLength === null || series.length < maxLength && series.length >= 100) {
+            maxLength = series.length;
+          }
+        });
+        // Limit each class to number of elements of smallest class
+        Object.keys(allSeries).forEach(keyName => {
+          allSeries[keyName] = allSeries[keyName].slice(0, maxLength);
+          if (allSeries[keyName].length < 100) {
+            delete allSeries[keyName];
+          }
+        });
+      }
+
+      // render the scatterplot
+      tfvis.render.scatterplot(
+        {
+          name: `Square Feet vs House Price`,
+          styles: { width: "100%" },
+        },
+        {
+          // should use object.entries(allseries).reduce and split them correctly (in order)
+          values: Object.values(allSeries),
+          series: Object.keys(allSeries),
+        },
+        {
+          xLabel: "Square feet",
+          yLabel: "Price",
+          height: size,
+          width: size * 1.5,
+        }
+      );
+    }
+
+    // plot the prediction heatmap
+    const plotPredictionHeatmap = async (name = "Predicted class", size = 400) => {
+      const [ valuesPromise, xTicksPromise, yTicksPromise ] = tf.tidy(() => {
+        const gridSize = 50;
+        const predictionColumns = [];
+        for (let colIndex = 0; colIndex < gridSize; colIndex++) {
+          // Loop for each column, starting from the left
+          const colInputs = [];
+          const x = colIndex / gridSize;
+          for (let rowIndex = 0; rowIndex < gridSize; rowIndex++) {
+            // Loop for each row, starting from the top
+            const y = (gridSize - rowIndex)/ gridSize;
+            colInputs.push([x, y]);
+          }
+
+          const colPredictions = model.predict(tf.tensor2d(colInputs));
+          predictionColumns.push(colPredictions);
+        }
+        const valuesTensor = tf.stack(predictionColumns);
+
+        const normalizedTicksTensor = tf.linspace(0, 1, gridSize);
+        const xTicksTensor = denormalize(normalizedTicksTensor,
+          normalizedFeature.min[0], normalizedFeature.max[0]);
+        const yTicksTensor = denormalize(normalizedTicksTensor.reverse(),
+          normalizedFeature.min[1], normalizedFeature.max[1]);
+
+        return [ valuesTensor.array(), xTicksTensor.array(), yTicksTensor.array() ];
+      });
+
+      const values = await valuesPromise;
+      const xTicks = await xTicksPromise;
+      const yTicks = await yTicksPromise;
+      const xTickLabels = xTicks.map(v => (v/1000).toFixed(1)+"k sqft");
+      const yTickLabels = yTicks.map(v => "$" + (v/1000).toFixed(0) + "k");
+
+
+      const data = {
+        values,
+        xTickLabels,
+        yTickLabels,
+      };
+
+      tf.unstack(values, 2).map((values, i) => {
+        const data = {
+          values,
+          xTickLabels,
+          yTickLabels,
+        };
+
+        tfvis.render.heatmap({
+          name: `Bedrooms: ${getClassName(i)} (local)`,
+          tab: "Predictions"
+        }, data, { height: size });
+        tfvis.render.heatmap({
+          name: `Bedrooms: ${getClassName(i)} (full domain)`,
+          tab: "Predictions"
+        }, data, { height: size, domain: [0, 1] });
+      });
+    }
+
+    // plot the params - for sigmoid model only, ran from console only
+    const plotParams = async (weight, bias) => {
+      model.getLayer(null, 0).setWeights([
+        tf.tensor2d([[weight]]), // Kernel (input multiplier)
+        tf.tensor1d([bias]), // Bias
+      ])
+      await plotPredictionHeatmap();
+      const layer = model.getLayer(undefined, 0);
+      tfvis.show.layer({ name: "Layer 1" }, layer);
+    }
+
+    // normalizes data
+    const normalize = (tensor, previousMin = null, previousMax = null) => {
+
+      const featureDimensions = tensor.shape.length > 1 && tensor.shape[1];
+
+      if (featureDimensions && featureDimensions > 1) {
+        // More than one feature
+
+        // Split into separate tensors
+        const features = tf.split(tensor, featureDimensions, 1);
+
+        // Normalize and find min/max values for each feature
+        const normalizedFeatures = features.map((featureTensor, i) =>
+          normalize(featureTensor,
+            previousMin ? previousMin[i] : null,
+            previousMax ? previousMax[i] : null,
+          )
+        );
+
+        // Prepare return values
+        const normalizedTensor = tf.concat(normalizedFeatures.map(f => f.tensor), 1);
+        const min = normalizedFeatures.map(f => f.min);
+        const max = normalizedFeatures.map(f => f.max);
+
+        return {
+          tensor: normalizedTensor,
+          min,
+          max
+        };
+      }
+      else {
+        // if just one feature
+        const min = previousMin || tensor.min()
+        const max = previousMax || tensor.max()
+        const normalizedTensor = tensor
+          .sub(min)
+          .div(max
+            .sub(min)
+          )
+        return {
+          tensor: normalizedTensor,
+          min,
+          max,
+        }
+      }
+    };
+
+    // denormalizes data
+    const denormalize = (tensor, min, max) => {
+      const featureDimensions = tensor.shape.length > 1 && tensor.shape[1];
+
+      if (featureDimensions && featureDimensions > 1) {
+        // More than one feature
+
+        // Split into separate tensors
+        const features = tf.split(tensor, featureDimensions, 1);
+
+        const denormalized = features.map((featureTensor, i) => denormalize(featureTensor, min[i], max[i]));
+
+        const denormalizedTensor = tf.concat(denormalized, 1);
+        return denormalizedTensor;
+      }
+
+      else {
+        // if just one feature
+        const denormalizedTensor = tensor
+          .mul(max
+            .sub(min)
+          ).add(min);
+        return denormalizedTensor;
+      }
+    };
+
+    // creates a classification model
+    const create = () => {
+      // creates sequential model
+      const model = tf.sequential();
+
+      // adds first layer to model
+      model.add(tf.layers.dense({
+        units: 10,
+        useBias: true,
+        activation: 'sigmoid',
+        inputDim: 2,
+      }));
+      // second layer
+      model.add(tf.layers.dense({
+        units: 10,
+        useBias: true,
+        activation: 'sigmoid',
+      }));
+      // output layer
+      model.add(tf.layers.dense({
+        units: 3,
+        useBias: true,
+        activation: 'softmax',
+      }));
+
+      // determines the loss, more useful for normalized data
+      const lossFunction = 'categoricalCrossentropy'
+
+      // minimizes the loss function with adam
+      const optFunction = tf.train.adam();
+
+      // prepares model for training and evaluation
+      model.compile({
+        loss: lossFunction,
+        optimizer: optFunction,
+      })
+
+      return model;
+    };
+
+    // trains the model
+    const train = async (model, trainingFeatureTensor, trainingLabelTensor) => {
+      // using tfvis to monitor training
+      const { onEpochEnd, onBatchEnd } = tfvis.show.fitCallbacks(
+        { name: "Training Performance" },
+        ['loss']
+      )
+
+      return model.fit(trainingFeatureTensor, trainingLabelTensor, {
+        batchSize: 32,
+        epochs: 2,
+        // epochs: 100,
+        validationSplit: 0.2,
+        callbacks: {
+          // onEpochEnd: (epoch, log) => console.log(`Epoch ${epoch}: loss = ${log.loss}`),
+          onEpochEnd,
+          onBatchEnd,
+          onEpochBegin: async (epoch, log) => {
+            await plotPredictionHeatmap();
+            const layer = model.getLayer(undefined, 0);
+            tfvis.show.layer({ name: 'Layer 1' }, layer);
+            // tfvis.show.layer({ name: `Layer ${epoch}` }, layer);
+          },
+        }
+      });
+    };
+
+    const createAndTrain = async () => {
+      // ui updates: disable all buttons and update status
+      ["train", "test", "load", "predict", "save"].map(id => {
+
+        document.getElementById(`${id}-button`).setAttribute("disabled", "disabled");
+      });
+      document.getElementById("model-status").innerHTML = "Training...";
+
+      // creating model
+      model = create();
+      const layer = model.getLayer(undefined, 0);
+      model.summary();
+      tfvis.show.modelSummary({ name: 'Model summary' }, model)
+      tfvis.show.layer({ name: 'Layer 1' }, layer)
+
+      // training model
+      const result = await train(model, trainingFeatureTensor, trainingLabelTensor);
+      const trainingLoss = result.history.loss.pop();
+      const validationLoss = result.history.val_loss.pop();
+
+      await plotPredictionHeatmap();
+      console.log(result)
+      console.log(`Training set loss: ${trainingLoss}`);
+      console.log(`Validation set loss: ${validationLoss}`);
+
+      // updating ui again
+      document.getElementById("model-status").innerHTML = "Trained (unsaved)\n"
+        + `Loss: ${trainingLoss.toPrecision(5)}\n`
+        + `Validation loss: ${validationLoss.toPrecision(5)}`;
+      document.getElementById("test-button").removeAttribute("disabled");
+      document.getElementById("save-button").removeAttribute("disabled");
+      document.getElementById("predict-button").removeAttribute("disabled");
+    };
+
+    // save the model
+    const save = async () => {
+      const saveResults = await model.save(storageDir);
+      document.getElementById("model-status").innerHTML = `Trained (saved ${saveResults.modelArtifactsInfo.dateSaved})`;
+    };
+
+    // load the model
+    const load = async () => {
+      const models = await tf.io.listModels();
+      const modelInfo = models[storageDir];
+      if (modelInfo) {
+        model = await tf.loadLayersModel(storageDir);
+
+        tfvis.show.modelSummary({ name: "Model summary" }, model);
+        const layer = model.getLayer(undefined, 0);
+        tfvis.show.layer({ name: "Layer 1" }, layer);
+
+        await plotPredictionHeatmap();
+
+        document.getElementById("model-status").innerHTML = `Trained (saved ${modelInfo.dateSaved})`;
+        document.getElementById("predict-button").removeAttribute("disabled");
+      }
+      else {
+        alert("Could not load: no saved model found");
+      }
+    };
+
+    // evaluate the model
+    const test = async () => {
+      const lossTensor = model.evaluate(testingFeatureTensor, testingLabelTensor);
+      const loss = (await lossTensor.dataSync())[0];
+      console.log(`Testing set loss: ${loss}`);
+
+      document.getElementById("testing-status").innerHTML = `Testing set loss: ${loss.toPrecision(5)}`;
+    };
+
+    // predict from the model
+    const predict = () => {
+      const predictionInputOne = parseInt(document.getElementById("prediction-input-1").value);
+      const predictionInputTwo = parseInt(document.getElementById("prediction-input-2").value);
+      if (isNaN(predictionInputOne) || isNaN(predictionInputTwo)) {
+        alert("Please enter a valid number");
+      }
+      else if (predictionInputOne < 200) {
+        alert("Please enter a value above 200 sqft");
+      }
+      else if (predictionInputTwo < 75000) {
+        alert("Please enter a value above $75,000");
+      }
+      else {
+        tf.tidy(() => {
+          const inputTensor = tf.tensor2d([[predictionInputOne, predictionInputTwo]]);
+          const normalizedInput = normalize(inputTensor, normalizedFeature.min, normalizedFeature.max);
+          const normalizedOutputTensor = model.predict(normalizedInput.tensor);
+          const outputTensor = denormalize(normalizedOutputTensor, normalizedLabel.min, normalizedLabel.max);
+          const outputs = outputTensor.dataSync();
+          let outputString = "";
+          for (let i = 0; i < 3; i++) {
+            outputString += `Likelihood of having ${getClassName(i)} bedrooms is: ${(outputs[i]*100).toFixed(1)}%<br>`;
+          }
+          document.getElementById("prediction-output").innerHTML = outputString;
+        });
+      }
+    };
+
+    const main = async () => {
+      // import from csv (source: https://www.kaggle.com/harlfoxem/housesalesprediction)
+      const salesData = tf.data.csv(csvDir);
+
+      // extract points (x and y values) to plot
+      const pointsData = salesData.map(record => ({
+        x: record.sqft_living,
+        y: record.price,
+        class: record.bedrooms > 2 ? "3+" : record.bedrooms,
+      })).filter(r => r.class !== 0);
+      points = await pointsData.toArray();
+
+      // ensuring there are an even number of points, for the sake of splitting
+      if (points.length % 2 !== 0) {
+        points.pop();
+      }
+
+      // shuffling the points
+      tf.util.shuffle(points);
+
+      // graphing the points
+      plot(points, "Bedrooms")
+
+      // extract inputs (features)
+      // const featureValues = await pointsData.map(p => p.x).toArray()
+      const featureValues = points.map(p => [p.x, p.y])
+      const featureTensor = tf.tensor2d(featureValues)
+
+      // extract outputs (labels)
+      // const labelValues = await pointsData.map(p => p.y).toArray()
+      const labelValues = points.map(p => getClassIndex(p.class));
+      const labelTensor = tf.tidy(() => tf.oneHot(tf.tensor1d(labelValues, 'int32'), 3));
+
+      // normalize features and labels
+      normalizedFeature = normalize(featureTensor)
+      normalizedLabel = normalize(labelTensor)
+
+      // memory management
+      featureTensor.dispose();
+      labelTensor.dispose();
+
+      // test denormalization
+      denormalize(
+        normalizedFeature.tensor,
+        normalizedFeature.min,
+        normalizedFeature.max,
+      ).print();
+
+      // splitting data into training and testing data
+      [trainingFeatureTensor, testingFeatureTensor] = tf.split(normalizedFeature.tensor, 2);
+      [trainingLabelTensor, testingLabelTensor] = tf.split(normalizedLabel.tensor, 2);
+
+      // update status and enable train button
+      document.getElementById("model-status").innerHTML = "No model trained";
+      document.getElementById("train-button").removeAttribute("disabled");
+      document.getElementById("load-button").removeAttribute("disabled");
+    }
+
+    main();
+
+  </script>
+
+  <!--   Header   -->
+  <div class="section no-pad-bot" id="index-banner">
+    <div class="container">
+      <h5 class="header center red-text small">
+        Multi-class Classification with TensorFlow.js
+      </h5>
+      <div class="row center">
+        <h6 class="header col s12 light">
+          Train a model to predict house price from living space.
+        </h6>
+      </div>
+    </div>
+  </div>
+
+  <!--   Misc buttons   -->
+  <div class="section no-pad-bot red lighten-4">
+    <div class="container">
+      <div class="row center">
+        <button
+          id="toggle-button"
+          class="waves-effect waves-light red btn-small"
+          onclick="toggleVisor()"
+        >
+          Toggle Visor
+        </button>
+        <br/><br/>
+      </div>
+    </div>
+  </div>
+
+  <!--   Main functionality   -->
+  <div class="container">
+    <div class="section">
+
+      <div class="row">
+        <!--   Training   -->
+        <div class="col s12 m6">
+          <div class="icon-block">
+            <h3 class="center red-text">
+              <i class="material-icons" style="font-size: 2em">build</i>
+            </h3>
+            <h5 class="center">Train & Test</h5>
+
+            <p class="light"></p>
+
+            <div>
+              <p>
+                <label>Training status:</label>
+              </p>
+              <pre
+                class="grey lighten-4"
+                style="overflow-x: auto"
+              >
+                <em id="model-status">Loading data...</em>
+              </pre>
+
+              <p>
+                <label>Testing status:</label>
+              </p>
+              <pre
+                class="grey lighten-4"
+                style="overflow-x: auto"
+              >
+                <em id="testing-status">Not yet tested</em>
+              </pre>
+
+              <button
+                autocomplete="off"
+                id="train-button"
+                class="waves-effect red waves-light btn"
+                disabled
+                onclick="createAndTrain()"
+              >
+                Train New Model
+              </button>
+              <button
+                autocomplete="off"
+                id="test-button"
+                class="waves-effect red waves-light btn"
+                disabled
+                onclick="test()"
+              >
+                Test Model
+              </button>
+            </div>
+            <br/>
+
+            <div>
+              <button
+                autocomplete="off"
+                id="load-button"
+                class="waves-effect red waves-light btn-small"
+                disabled
+                onclick="load()"
+              >
+                Load Model
+              </button>
+              <button
+                autocomplete="off"
+                id="save-button"
+                class="waves-effect red waves-light btn-small"
+                disabled
+                onclick="save()"
+              >
+                Save Model
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+        <!--   Prediction   -->
+        <div class="col s12 m6">
+          <div class="icon-block">
+            <h3 class="center red-text">
+              <i class="material-icons" style="font-size: 2em">timeline</i>
+            </h3>
+            <h5 class="center">Predict</h5>
+
+            <label>
+              Square feet of living space:
+              <input
+                type="number"
+                id="prediction-input-1"
+                placeholder="2000"
+              />
+            </label>
+            <label>
+              House price
+              <input
+                type="number"
+                id="prediction-input-2"
+                placeholder="100000"
+              />
+            </label>
+            <button
+              autocomplete="off"
+              id="predict-button"
+              class="waves-effect red waves-light btn"
+              disabled onclick="predict()"
+            >
+              Predict class
+            </button>
+            <p>
+              <strong id="prediction-output"></strong>
+            </p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+
+
+</body>
+</html>
